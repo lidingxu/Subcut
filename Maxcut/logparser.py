@@ -41,6 +41,7 @@ def extract_scip(entry_, file_path):
     entry["affected"] =   int(stat_dict["intersub"].split()[8]) > 0 
     #print(stat_dict["intersub"].split()[8])
     entry["ncuts"] =  int(stat_dict["intersub"].split()[8])  + int(stat_dict["interlattice"].split()[8]) 
+    entry["napplied"] =  int(stat_dict["intersub"].split()[11])  + int(stat_dict["interlattice"].split()[11]) 
     entry["solving"] = float(stat_dict["solving"].split()[2])
     #entry["rel_gap"] = float(if stat_dict["Gap"].split()[2] == "infinite") #float(stat_dict["Gap"].split()[2])
     return entry
@@ -63,6 +64,8 @@ def parse_name(name):
 
 
 
+bench_path = os.getcwd() + "/benchmark"
+benchs = os.listdir(bench_path)
 
 opt_file = open("opt.txt", "r")
 ls = opt_file.readlines()
@@ -78,7 +81,12 @@ for line in ls:
     #print(line)
     entry = {}
     entry["instance"] = line[0]
-    entry["opt"] = float(line[2])
+    lst_data = open(bench_path + "/"+ entry["instance"] + ".cut", "r").readlines()
+    sumweight = 0
+    for d in lst_data[1:]:
+        sumweight += float(d.split(" ")[2])
+    #print(sumweight)
+    entry["opt"] = float(line[2]) / sumweight
     line = line[0].split("_")
     if line[0] == "g05":
         entry["pclass"] = "g05"
@@ -92,11 +100,12 @@ for line in ls:
     opt_dict[entry["instance"]] = entry
 
 
-
-log_path = os.getcwd() + "/logs"
+log_path = os.getcwd() + "/rootlogs2"
 logs = os.listdir(log_path)
 
 entries = []
+instances = set()
+
 
 for log in logs:
     log_ = log
@@ -107,31 +116,24 @@ for log in logs:
     log = log.split("_")[0] +"_" + log.split("_")[1]
     instance = log.split(".")[0] +"." + log.split(".")[1]
     entry={}
+    instances.add(instance)
     entry["instance"] = instance
     entry["activate"] = activate
     entry["setting"] = setting
     entry["pclass"] = opt_dict[instance]["pclass"]
     entry["subclass"] = opt_dict[instance]["subclass"]
-    #entry["iscontinuous"] = True
     entry = extract_scip(entry, log_path + "/"+log_)
-    #banks[setting].append(entry)
-    #if entry["setting"] == "default" and entry["noLP"]:
-    #    nolp.append(entry["instance"])
-    #print(entry, "\n")
     entries.append(entry)
 
 
-#print(entries)
-    
-
 def Stat(aname, sname, pname, subname):
-    return {"activate": aname, "setting": sname, "pclass": pname, "subclass": subname, "solved": 0, "closed": 0, "total_time": 0.0, "total": 0, "ncuts": 0, "relative": 1.,  "relative_lst": [], "total_time_lst": [], "ncuts_lst": [], "closed_lst": []} 
+    return {"activate": aname, "setting": sname, "pclass": pname, "subclass": subname, "solved": 0, "closed": 0, "total_time": 0.0, "total": 0, "ncuts": 0,  "napplied": 0, "relative": 1., "relative_lst": [], "total_time_lst": [], "ncuts_lst": [], "napplied_lst": [], "closed_lst": []} 
 
-display_keys = ["activate", "setting","pclass", "subclass", "closed", "relative", "total_time", "ncuts", "total"]
+display_keys = [ "closed", "relative", "total_time",  "napplied"]
 
 
 
-activates = ["a", "d"]
+activates = ["d", "a"]
 settings = ["default", "icuts", "icutsl"]
 
 subpclasses = {"g05": ["60", "80", "100"], "pw": ["01", "05", "09"]}
@@ -169,6 +171,7 @@ def add(stat, entry):
     #stat["solved"] += entry["issolved"] 
     stat["total"] += 1
     stat["ncuts_lst"].append(entry["ncuts"])
+    stat["napplied_lst"].append(entry["napplied"])
     stat["closed_lst"].append(entry["closed"]) 
     stat["total_time_lst"].append(entry["total_time"])
     #print(entry["relative"])
@@ -183,14 +186,15 @@ def avgStat(stat):
     stat["closed"] =  SGM(stat["closed_lst"], stat["total"], 1)
     stat["total_time"] = SGM(stat["total_time_lst"], stat["total"], 1)
     stat["ncuts"] = SGM(stat["ncuts_lst"] , stat["total"], 1)
+    stat["napplied"] = SGM(stat["napplied_lst"] , stat["total"], 1)
     stat["relative"] = SGM(stat["relative_lst"] , stat["total"], 1)
 
 
 
 def printStat(activate, setting, pclass, stat):
     #print(setting, pclass, stat)
-    print(activate, setting, pclass, [(display_key, stat[display_key]) for display_key in display_keys])
-
+    s = [ str(round(stat[display_key], 3) if display_key is "relative" or display_key is "closed" else round(stat[display_key], 2)) + " & " for display_key in display_keys]
+    print(activate, setting, pclass, "".join(s))
 
 stats = {}
 allstat = {}
@@ -210,3 +214,51 @@ for activate in activates:
         #allstat[setting]["relative"] = (allstat[setting]["closed"] + 1e-9) /  (allstat["default"]["closed"] + 1e-9)       
         printStat(activate, setting, "all", allstat[(activate, setting)])
 
+
+
+pairs = (("default", "icuts"), ("default", "icutsl"), ("icutsl","icuts"))
+
+names = {"default": "Default", "icutsl": "Split cut", "icuts": "Submodular cut"}
+data= {}
+dataname = {}
+for i in range(0,2):
+    for j in range(0,3):
+        data[(activates[i], pairs[j][0])] = []
+        data[(activates[i], pairs[j][1])] = []
+        dataname[(activates[i], pairs[j][1])] = []
+        dataname[(activates[i], pairs[j][0])] = []
+
+settings = ["default", "icuts", "icutsl"]
+for instance in instances:
+    for activate in activates:
+        for setting in settings:
+            for entry in entries:
+                if entry["instance"] == instance and entry["setting"] == setting and entry["activate"] == activate:
+                    data[(activate, setting)].append(entry["closed"])
+                    dataname[(activate, setting)].append(entry["instance"])
+                    break
+
+
+fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(10, 6))  # define the figure and subplots
+
+for i in range(0,2):
+    for j in range(0,3):
+        pair = pairs[j]
+        wins = [0,0]
+        print(len( data[(activates[i], pair[0])]),  len(data[(activates[i], pair[1])]))
+        num = min(len( data[(activates[i], pair[0])]),  len(data[(activates[i], pair[1])]))
+        maxd = 0
+        for k in range(num):
+            maxd = max(maxd, data[(activates[i], pair[0])][k], data[(activates[i], pair[1])][k])
+            if data[(activates[i], pair[0])][k] > data[(activates[i], pair[1])][k]:
+                print(data[(activates[i], pair[0])][k], data[(activates[i], pair[1])][k], dataname[(activates[i], pair[1])][k])
+                wins[0] += 1
+            else:
+                wins[1] += 1
+        axes[i,j].scatter(data[(activates[i], pair[1])], data[(activates[i], pair[0])], color = 'blue', marker = '+')
+        axes[i,j].plot([0,maxd], [0, maxd], color = 'green')
+        axes[i,j].set_xlabel(names[pair[1]] +" wins " + str(wins[1]))
+        axes[i,j].set_ylabel(names[pair[0]] + " wins " +  str(wins[0]))
+
+fig.tight_layout()
+plt.savefig('scatter_qubo.pdf') 

@@ -28,6 +28,7 @@
 #include <sstream>
 #include <math.h>
 #include <utility>
+#include <map>
 #include <tuple>
 //#include <armadillo>
 
@@ -91,12 +92,52 @@ SCIP_DECL_READERREAD(ReaderSubmodular::scip_read) {
 	filedata >> numvars >> numedges; 
 
 	vector<tuple<int, int, SCIP_Real>> weights(numedges);
+	SCIP_Real sumweight = 0, maxweight = 0;
+	vector<map<int, SCIP_Real>> incidents;
+	for(int i = 0; i < numedges; i++){
+		incidents.push_back(map<int, SCIP_Real>());
+	}
 	// read graph weights
 	for(int i = 0; i < numedges; i++){
 		int u, v;
 		SCIP_Real weight;
 		filedata >> u >> v >> weight;
+		incidents[u][v] = weight;
+		incidents[v][u] = weight;
 		weights[i] = make_tuple(u-1, v-1, weight);
+		maxweight +=1;
+		sumweight +=  weight;
+	}
+
+	vector<bool> incut(numvars, false);
+	SCIP_Real sumweight_ = 0;
+	int  u = 0;
+	int added = 0;
+	while(added != numvars)
+	{
+		incut[u] = true;
+		for(auto entry: incidents[u]){
+			sumweight_ += incut[entry.first] ? -entry.second : entry.second;
+		}	
+		added++;
+		SCIP_Real delta_max = 0;
+		for(int i = 0; i < numedges; i++){
+			if(!incut[i]){
+				SCIP_Real delta = 0;
+				for(auto entry: incidents[i]){
+					delta += incut[entry.first] ? -entry.second : entry.second;
+				}	
+				if(delta > delta_max){
+					delta_max = delta;
+					u = i;
+				}
+			}
+		}
+	}
+	printf("all:%f estimates%f\n", sumweight, sumweight_);
+	// scaling
+	for(int i = 0; i < numedges; i++){
+		get<2>(weights[i]) = get<2>(weights[i]) / maxweight;
 	}
 
 	SCIPdebugMessage("numvars:%d numedges:%d \n", numvars, numedges);

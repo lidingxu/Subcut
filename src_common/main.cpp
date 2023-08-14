@@ -63,49 +63,44 @@ SCIP_RETCODE runShell(
    SCIP_CALL( SCIPaddBoolParam(scip, "submodular/is_nature","use the submodular problem's nature formulation or its overestimating formulation", NULL, FALSE, TRUE, NULL,  NULL) );
    SCIP_CALL( SCIPaddBoolParam(scip, "submodular/gradient_cut","use gradient cut for the submodular problem's nature formulation", NULL, FALSE, FALSE, NULL,  NULL) );
    
-   SCIP_CALL( SCIPaddRealParam(scip,
-      "separating/intersub/mincutviol",
-      "minimum required violation of a cut",
-      NULL, FALSE, 1e-4, 0.0, SCIP_REAL_MAX, NULL, NULL) );
+   string SEPA_NAME1= "interlattice";
+   string SEPA_NAME2= "intersub";
+   for(int i = 0; i < 2; i++){
+      string SEPA_NAME;
+      if(i == 0)
+         SEPA_NAME = SEPA_NAME1;
+      else
+         SEPA_NAME = SEPA_NAME2;
 
-   SCIP_CALL( SCIPaddIntParam(scip,
-         "separating/intersub/maxrounds",
-         "maximal number of separation rounds per node (-1: unlimited)",
-         NULL, FALSE, 3, -1, INT_MAX, NULL, NULL) );
+      SCIP_CALL( SCIPaddIntParam(scip, ("separating/" + SEPA_NAME + "/ncutslimit").c_str(),
+            "limit for number of cuts generated consecutively",
+            NULL, FALSE, 2, 0, INT_MAX, NULL, NULL) );
 
-   SCIP_CALL( SCIPaddIntParam(scip,
-         "separating/intersub/maxroundsroot",
-         "maximal number of separation rounds in the root node (-1: unlimited)",
-         NULL, FALSE, -1, -1, INT_MAX, NULL, NULL) );
+      SCIP_CALL( SCIPaddIntParam(scip, ("separating/" + SEPA_NAME + "/ncutslimitroot").c_str(),
+            "limit for number of cuts generated at root node",
+            NULL, FALSE, 40, 0, INT_MAX, NULL, NULL) );
 
+      SCIP_CALL( SCIPaddRealParam(scip, ("separating/" + SEPA_NAME + "/mincutviolation").c_str(),
+            "minimal cut violation the generated cuts must fulfill to be added to the LP",
+            NULL, FALSE, 1e-4, 0.0, SCIPinfinity(scip), NULL, NULL) );
 
-   SCIP_CALL( SCIPaddBoolParam(scip,
-         "separating/intersub/cleanrowprep",
-         "clean rowprep",
-         NULL, FALSE, TRUE, NULL,  NULL) );
+      SCIP_CALL( SCIPaddRealParam(scip, ("separating/" + SEPA_NAME  + "/minviolation").c_str(),
+            "minimal violation the constraint must fulfill such that a cut is generated",
+            NULL, FALSE, 1e-4, 0.0, SCIPinfinity(scip), NULL, NULL) );
 
+      SCIP_CALL( SCIPaddIntParam(scip, ("separating/" + SEPA_NAME + "/atwhichnodes").c_str(),
+            "determines at which nodes cut is used (if it's -1, it's used only at the root node, if it's n >= 0, it's used at every multiple of n",
+            NULL, FALSE, 1, -1, INT_MAX, NULL, NULL) );
 
-   SCIP_CALL( SCIPaddRealParam(scip,
-      "separating/interlattice/mincutviol",
-      "minimum required violation of a cut",
-      NULL, FALSE, 1e-4, 0.0, SCIP_REAL_MAX, NULL, NULL) );
+      SCIP_CALL( SCIPaddBoolParam(scip, ("separating/" + SEPA_NAME + "/ignorebadrayrestriction").c_str(),
+            "should cut be generated even with bad numerics when restricting to ray?",
+            NULL, FALSE, FALSE, NULL, NULL) );
 
-   SCIP_CALL( SCIPaddIntParam(scip,
-         "separating/interlattice/maxrounds",
-         "maximal number of separation rounds per node (-1: unlimited)",
-         NULL, FALSE, 3, -1, INT_MAX, NULL, NULL) );
+      SCIP_CALL( SCIPaddBoolParam(scip, ("separating/" + SEPA_NAME + "/ignorenhighre").c_str(),
+            "should cut be added even when range / efficacy is large?",
+            NULL, FALSE, FALSE, NULL, NULL) );
+   }
 
-   SCIP_CALL( SCIPaddIntParam(scip,
-         "separating/interlattice/maxroundsroot",
-         "maximal number of separation rounds in the root node (-1: unlimited)",
-         NULL, FALSE, -1, -1, INT_MAX, NULL, NULL) );
-
-
-   SCIP_CALL( SCIPaddBoolParam(scip,
-         "separating/interlattice/cleanrowprep",
-         "clean rowprep",
-         NULL, FALSE, TRUE, NULL,  NULL) );
-   
 
    /**********************************
     * Process command line arguments *

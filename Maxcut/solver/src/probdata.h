@@ -50,9 +50,9 @@ public:
          incident_list[v2].push_back(make_pair(v1, w));
       }
       w_valinds = vector<pair<SCIP_Real, int>> (numvars_);
-      w_indicator = vector<SCIP_Real>(numvars_);
+      w_indicator = vector<bool>(numvars_);
+      branch_indicator = vector<unsigned int>(numvars_);
       w_val = vector<SCIP_Real> (numvars_);
-      w_coeffs = vector<SCIP_Real> (numvars_);
       has_knapcons = FALSE;
       has_cardcons = FALSE;
    };
@@ -60,30 +60,24 @@ public:
    /**< destructor */
    ~ProbData();
 
-   /**< utility functions*/
-   SCIP_Real orcaleValue(
-      const vector<SCIP_Real> & values,
-      int id,
-      SCIP_Real prev_val
+   void useBranch(
+      SCIP * scip
    );
-
-
-
 
    /**< evaluate the ray */
    SCIP_Real evalRay(
       SCIP * scip,
-      vector<SCIP_Real> & ray,
-      vector<SCIP_Real> & sol,
-      const SCIP_Real & t
+      const vector<SCIP_Real> & ray,
+      const vector<SCIP_Real> & sol,
+      const SCIP_Real t
    );
 
    /**< evaluate the ray with gradient information*/
    SCIP_Real  evalRayWith(
       SCIP * scip,
-      vector<SCIP_Real> & ray,
-      vector<SCIP_Real> & sol,
-      const SCIP_Real & t,
+      const vector<SCIP_Real> & ray,
+      const vector<SCIP_Real> & sol,
+      const SCIP_Real  t,
       SCIP_Real & gradient
    );
 
@@ -96,7 +90,8 @@ public:
    /**< evaluate the underestimator of the submodular function with linear underestimator */
    SCIP_Real evalUnderSubWith(
       SCIP*              scip,    			/**< SCIP data structure */
-      const vector<SCIP_Real> & varval    /**< variable value*/
+      const vector<SCIP_Real> & varval,    /**< variable value*/
+      const vector<SCIP_Real> & ray
    );
 
    /** add submodular constraint associated with S*/
@@ -183,9 +178,12 @@ public:
 
    // working vectors
    vector<pair<SCIP_Real, int>> w_valinds;
-   vector<SCIP_Real> w_indicator;
+   vector<bool> w_indicator;
+   vector<unsigned int> branch_indicator;
    vector<SCIP_Real> w_val;
-   vector<SCIP_Real> w_coeffs;
+   SCIP_Real gradient;
+   SCIP_Real startvalue;
+   bool is_branch_opt;
 };/*lint !e1712*/
 
 

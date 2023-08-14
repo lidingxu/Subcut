@@ -38,6 +38,7 @@ def extract_scip(entry_, file_path):
     entry["FirstLP"] =   float("NAN")  if stat_dict["First LP value"].split()[4] == "-" else float(stat_dict["First LP value"].split()[4])
     entry["affected"] =   int(stat_dict["intersub"].split()[8]) > 0 
     entry["ncuts"] =  int(stat_dict["intersub"].split()[8])  + int(stat_dict["interlattice"].split()[8]) 
+    entry["napplied"] =  int(stat_dict["intersub"].split()[11])  + int(stat_dict["interlattice"].split()[11]) 
     entry["solving"] = float(stat_dict["solving"].split()[2])
     #entry["rel_gap"] = float(if stat_dict["Gap"].split()[2] == "infinite") #float(stat_dict["Gap"].split()[2])
     return entry
@@ -58,23 +59,28 @@ logs = os.listdir(log_path)
 entries = []
 opt_dict = {}
 
+
+instances = set()
+
+
 for log in logs:
     log_ = log
     log = log[0:-4]
 
     instance = log.split(".")[0]
     setting = log.split("_")[-1]
-    setting = setting[0:-1] if setting[0] == "d" else setting[0:6]
-    activate = "standalone" if log[-1] == "s" else "embed" 
+    activate = setting[-1] 
+    setting = setting[0:-1]
     insclass = "block" if log[0] == "b" else "normal" 
 
+    instances.add(instance)
 
     entry={}
     entry["instance"] = instance
     entry["activate"] = activate
     entry["setting"] = setting
     entry["class"] =  insclass
-    #print(instance, insclass, setting)
+    print(instance, insclass, setting, activate)
     entry["relative"] = 1
     #print(entry, "\n")
     entry = extract_scip(entry, log_path + "/"+log_)
@@ -94,15 +100,16 @@ for log in logs:
 
 
 def Stat(aname, sname, pname):
-    return {"activate": aname,"setting": sname, "pclass": pname, "solved": 0, "closed": 0, "total_time": 0.0, "total": 0, "ncuts": 0, "relative": 1., "relative_lst": [], "total_time_lst": [], "ncuts_lst": [], "closed_lst": []} 
+    return {"activate": aname,"setting": sname, "pclass": pname, "solved": 0, "closed": 0, "total_time": 0.0, "total": 0, "ncuts": 0,  "napplied": 0, "relative": 1., "relative_lst": [], "total_time_lst": [], "ncuts_lst": [], "napplied_lst": [], "closed_lst": []} 
 
-display_keys = ["activate","setting", "pclass", "closed", "relative", "total_time", "ncuts", "total"]
+display_keys = ["activate","setting", "pclass", "closed", "relative", "total_time", "ncuts", "napplied", "total"]
+
 
 
 details = ""
 
-activates = ["standalone", "embed"]
-settings = ["default", "icutss", "icutsl"]
+activates = ["standalone","embed"]
+settings = ["default", "icuts", "icutsl"]
 pclasses = ['block', 'normal']
 
 classstats = {}
@@ -140,6 +147,7 @@ def add(stat, entry):
     stat["total"] += 1
     stat["ncuts_lst"].append(entry["ncuts"])
     stat["closed_lst"].append(entry["closed"]) 
+    stat["napplied_lst"].append(entry["napplied"])
     stat["total_time_lst"].append(entry["total_time"])
     #print(entry["relative"])
     stat["relative_lst"].append(entry["relative"])
@@ -153,6 +161,7 @@ def avgStat(stat):
     stat["closed"] =  SGM(stat["closed_lst"], stat["total"], 1)
     stat["total_time"] = SGM(stat["total_time_lst"], stat["total"], 1)
     stat["ncuts"] = SGM(stat["ncuts_lst"] , stat["total"], 1)
+    stat["napplied"] = SGM(stat["napplied_lst"] , stat["total"], 1)
     stat["relative"] = SGM(stat["relative_lst"] , stat["total"], 1)
 
 
@@ -203,3 +212,49 @@ for activate in activates:
         else:
             display_str += mystr(allstat[(activate, setting)]["closed"]) + " & " + mystr(allstat[(activate, setting)]["relative"])  + " & " + mystr(allstat[(activate, setting)]["total_time"]) + " & "  + mystr(allstat[(activate, setting)]["ncuts"]) + " & "
     print(activate, " ", display_str)
+
+
+
+
+
+pairs = (("default", "icuts"), ("default", "icutsl"), ("icutsl","icuts"))
+
+names = {"default": "Default", "icutsl": "Split cut", "icuts": "Submodular cut"}
+data= {}
+for i in range(0,2):
+    for j in range(0,3):
+        data[(activates[i], pairs[j][0])] = []
+        data[(activates[i], pairs[j][1])] = []
+
+settings = ["default", "icuts", "icutsl"]
+for instance in instances:
+    for activate in activates:
+        for setting in settings:
+            for entry in entries:
+                if entry["instance"] == instance and entry["setting"] == setting and entry["activate"] == activate:
+                    data[(activate, setting)].append(entry["closed"])
+                    break
+
+print(data)
+
+fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(10, 6))  # define the figure and subplots
+
+for i in range(0,2):
+    for j in range(0,3):
+        pair = pairs[j]
+        wins = [0,0]
+        num = min(len( data[(activates[i], pair[0])]),  len(data[(activates[i], pair[1])]))
+        maxd = 0
+        for k in range(num):
+            maxd = max(maxd, data[(activates[i], pair[0])][k], data[(activates[i], pair[1])][k])
+            if data[(activates[i], pair[0])][k] > data[(activates[i], pair[1])][k]:
+                wins[0] += 1
+            else:
+                wins[1] += 1
+        axes[i,j].scatter(data[(activates[i], pair[1])], data[(activates[i], pair[0])], color = 'blue', marker = '+')
+        axes[i,j].plot([0,maxd], [0, maxd], color = 'green')
+        axes[i,j].set_xlabel(names[pair[1]] +" wins " + str(wins[1]))
+        axes[i,j].set_ylabel(names[pair[0]] + " wins " +  str(wins[0]))
+
+fig.tight_layout()
+plt.savefig('scatter_dopt.pdf') 

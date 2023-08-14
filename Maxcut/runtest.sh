@@ -1,10 +1,10 @@
 #!/bin/bash
 timelimit=3600
 gnuparalleltest=1 # 1: use GNU parallel to speed up test; 0: not use
-algorithms=("defaulta" "icutsa" "icutsla" "defaultd" "icutsd" "icutsld")
+algorithms=("defaulta" "icutsa" "icutsla") #("defaulta" "icutsa" "icutsla" "defaultd" "icutsd" "icutsld")
 datapath="benchmark"
-logpath="logs"
-settingpath="settings"
+logpath="bblogs"
+settingpath="bbsettings"
 
 # create and clear test files
 #python3 ./testdir.py
@@ -45,7 +45,7 @@ then
         done
     done
 else
-    parallel --will-cite --jobs 85% runInstance  "$timelimit" ::: "$instances" :::  "${algorithms[@]}" ::: "$logpath" ::: "$settingpath" ::: "$datapath"
+    parallel --will-cite --jobs 65% runInstance  "$timelimit" ::: "$instances" :::  "${algorithms[@]}" ::: "$logpath" ::: "$settingpath" ::: "$datapath"
 fi
 
 

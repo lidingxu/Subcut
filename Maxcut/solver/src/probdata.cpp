@@ -84,48 +84,59 @@ SCIP_RETCODE ProbData::scip_delorig(
 /**< evaluate the ray */
 SCIP_Real ProbData::evalRay(
 	SCIP * scip,
-	vector<SCIP_Real> & ray,
-	vector<SCIP_Real> & sol,
-	const SCIP_Real & t
+	const vector<SCIP_Real> & ray,
+	const vector<SCIP_Real> & sol,
+	const SCIP_Real t
 ){
 	for(int i = 0; i < numvars; i++){
 		w_val[i] = sol[i] + t * ray[i];
 	}
-
 	SCIP_Real underobj = evalUnderSub(scip, w_val);
 	SCIP_Real obj =  sol[numvars] + t * ray[numvars];
-
 	return obj - underobj;
 }
-
 
 /**< evaluate the ray with the gradient information*/
 SCIP_Real ProbData::evalRayWith(
 	SCIP * scip,
-	vector<SCIP_Real> & ray,
-	vector<SCIP_Real> & sol,
-	const SCIP_Real & t,
-	SCIP_Real & gradient
+	const vector<SCIP_Real> & ray,
+	const vector<SCIP_Real> & sol,
+	const SCIP_Real  t,
+	SCIP_Real & gradient_
 ){
 	for(int i = 0; i < numvars; i++){
 		w_val[i] = sol[i] + t * ray[i];
 	}
-
-	SCIP_Real underobj = evalUnderSubWith(scip, w_val);
-
-	SCIP_Real obj =  sol[numvars] + t * ray[numvars];
-
 	gradient = ray[numvars];
-
-	SCIP_Real test_val = emptyvalue;
-	for(int i = 0; i < numvars; i++){
-		//printf("%f ", w_coeffs[i]);
-		test_val += w_val[i] * w_coeffs[i];
-		gradient -= w_coeffs[i] * ray[i];
-	}
-	//printf("%f %f\n", test_val, underobj);
-
+	SCIP_Real underobj = evalUnderSubWith(scip, w_val, ray);
+	SCIP_Real obj =  sol[numvars] + t * ray[numvars];
+	gradient_ = gradient;
 	return obj - underobj;	
+}
+
+void ProbData::useBranch(
+	SCIP * scip
+){
+	startvalue = emptyvalue;
+	is_branch_opt = true;
+	for(int i = 0; i < numvars; i++){
+		if(SCIPvarGetUbLocal(bin_vars[i]) < 0.5){
+			branch_indicator[i] = 0;
+		}
+		else if(SCIPvarGetLbLocal(bin_vars[i]) > 0.5){
+			branch_indicator[i] = 1;
+			SCIP_Real delta_val = 0;
+			auto & incident_edges = incident_list[i];
+			for(auto & p: incident_edges){
+				SCIP_Real wt = p.second;
+				delta_val += branch_indicator[p.first] == 1 ? -wt : wt;
+			}
+			startvalue += delta_val;
+		}
+		else{
+			branch_indicator[i] = 2;
+		}
+	}
 }
 
 // evaluate the underestimator of submodular function
@@ -133,50 +144,111 @@ SCIP_Real ProbData::evalUnderSub(
    SCIP*              scip,    /**< SCIP data structure */
    const vector<SCIP_Real> & varval  /**< vector value */
 ){
-	for(int i = 0; i < numvars; i++){
-		w_valinds[i].first  = varval[i]; 
-		w_valinds[i].second = i;
+	if(is_branch_opt){
+		int nactive = 0;
+		for(int i = 0; i < numvars; i++){
+			if(branch_indicator[i] == 2){
+				w_valinds[i].first  = varval[i]; 
+				w_valinds[i].second = i;
+				nactive++;
+			}
+		}
+		sort(w_valinds.begin(), w_valinds.begin() + nactive, [](const pair<SCIP_Real, int> & p1, const  pair<SCIP_Real, int> & p2){ return p1.first > p2.first || (p1.first == p2.first && p1.second > p2.second);});
+		
+		std::fill(w_indicator.begin(), w_indicator.begin() + nactive, false);
+		SCIP_Real underobj = startvalue;
+		for(int i = 0; i < nactive; i++){
+			int id  = w_valinds[i].second;
+			w_indicator[id] = true;
+			SCIP_Real delta_val = 0;
+			auto & incident_edges = incident_list[id];
+			for(auto & p: incident_edges){
+				SCIP_Real wt = p.second;
+				delta_val += (branch_indicator[p.first] == 1 || (branch_indicator[p.first] == 2 && w_indicator[p.first]))  ? -wt : wt;
+			}
+			underobj += delta_val * w_valinds[i].first;
+		}
+		return underobj;
+	}{
+		for(int i = 0; i < numvars; i++){
+			w_valinds[i].first  = varval[i]; 
+			w_valinds[i].second = i;
+		}
+		sort(w_valinds.begin(), w_valinds.end(), [](const pair<SCIP_Real, int> & p1, const  pair<SCIP_Real, int> & p2){ return p1.first > p2.first || (p1.first == p2.first && p1.second > p2.second);});
+		
+		std::fill(w_indicator.begin(), w_indicator.end(), false);
+		SCIP_Real underobj = emptyvalue;
+		for(int i = 0; i < numvars; i++){
+			int id  = w_valinds[i].second;
+			w_indicator[id] = true;
+			SCIP_Real delta_val = 0;
+			auto & incident_edges = incident_list[id];
+			for(auto & p: incident_edges){
+				SCIP_Real wt = p.second;
+				delta_val += w_indicator[p.first] ? -wt : wt;
+			}
+			underobj += delta_val * w_valinds[i].first;
+		}
+		return underobj;
 	}
-	sort(w_valinds.begin(), w_valinds.end(), [](const pair<SCIP_Real, int> & p1, const  pair<SCIP_Real, int> & p2){ return p1.first > p2.first || (p1.first == p2.first && p1.second > p2.second);});
-	
-	std::fill(w_indicator.begin(), w_indicator.end(), 0.);
-	SCIP_Real prev_val = emptyvalue;
-	SCIP_Real underobj = emptyvalue;
-	for(int i = 0; i < w_valinds.size(); i++){
-		int id  = w_valinds[i].second;
-		w_indicator[id] = 1;
-		SCIP_Real current_val = orcaleValue(w_indicator, id, prev_val);
-		SCIP_Real coeff = current_val - prev_val;
-		prev_val = current_val;
-		underobj += coeff * w_valinds[i].first;
-	}
-	return underobj;
 }
 
 // evaluate the underestimator of submodular function with the linear underestimator
 SCIP_Real ProbData::evalUnderSubWith(
    	SCIP*              		scip,    	/**< SCIP data structure */
-   	const vector<SCIP_Real> & varval    /**< variable value*/
+   	const vector<SCIP_Real> & varval,    /**< variable value*/
+		const vector<SCIP_Real> & ray
 ){
-	for(int i = 0; i < varval.size(); i++){
-		w_valinds[i].first  = varval[i]; 
-		w_valinds[i].second = i;
+	if(is_branch_opt){
+		for(int i = 0; i < numvars; i++){
+			w_valinds[i].first  = varval[i]; 
+			w_valinds[i].second = i;
+		}
+		sort(w_valinds.begin(), w_valinds.end(), [](const pair<SCIP_Real, int> & p1, const  pair<SCIP_Real, int> & p2){ return p1.first > p2.first || (p1.first == p2.first && p1.second > p2.second);});
+		
+		std::fill(w_indicator.begin(), w_indicator.end(), false);
+		SCIP_Real underobj = emptyvalue;
+		for(int i = 0; i < numvars; i++){
+			int id  = w_valinds[i].second;
+			w_indicator[id] = true;
+			SCIP_Real delta_val = 0;
+			auto & incident_edges = incident_list[id];
+			for(auto & p: incident_edges){
+				SCIP_Real wt = p.second;
+				delta_val += w_indicator[p.first] ? -wt : wt;
+			}
+			gradient -= delta_val * ray[id];
+			underobj += delta_val * w_valinds[i].first;
+		}
+		return underobj;
 	}
-	sort(w_valinds.begin(), w_valinds.end(), [](const pair<SCIP_Real, int> & p1, const  pair<SCIP_Real, int> & p2){ return p1.first > p2.first || (p1.first == p2.first && p1.second > p2.second);});
-	
-	std::fill(w_indicator.begin(), w_indicator.end(), 0.);
-	SCIP_Real prev_val = emptyvalue;
-	SCIP_Real underobj = emptyvalue;
-	for(int i = 0; i < w_valinds.size(); i++){
-		int id  = w_valinds[i].second;
-		w_indicator[id] = 1;
-		SCIP_Real current_val = orcaleValue(w_indicator, id, prev_val);
-		SCIP_Real coeff = current_val - prev_val;
-		w_coeffs[id] = coeff;
-		prev_val = current_val;
-		underobj += coeff * w_valinds[i].first;
+	else{
+		int nactive = 0;
+		for(int i = 0; i < numvars; i++){
+			if(branch_indicator[i] == 2){
+				w_valinds[i].first  = varval[i]; 
+				w_valinds[i].second = i;
+				nactive++;
+			}
+		}
+		sort(w_valinds.begin(), w_valinds.begin() + nactive, [](const pair<SCIP_Real, int> & p1, const  pair<SCIP_Real, int> & p2){ return p1.first > p2.first || (p1.first == p2.first && p1.second > p2.second);});
+		
+		std::fill(w_indicator.begin(), w_indicator.begin() + nactive, false);
+		SCIP_Real underobj = startvalue;
+		for(int i = 0; i < nactive; i++){
+			int id  = w_valinds[i].second;
+			w_indicator[id] = true;
+			SCIP_Real delta_val = 0;
+			auto & incident_edges = incident_list[id];
+			for(auto & p: incident_edges){
+				SCIP_Real wt = p.second;
+				delta_val += (branch_indicator[p.first] == 1 || (branch_indicator[p.first] == 2 && w_indicator[p.first])) ? -wt : wt;
+			}
+			gradient -= delta_val * ray[id];
+			underobj += delta_val * w_valinds[i].first;
+		}
+		return underobj;
 	}
-	return underobj;
 }
 
 /** creates user data of transformed problem by transforming the original user problem data
@@ -259,19 +331,6 @@ SCIP_RETCODE ProbData::scip_deltrans(
 }
 
 
-SCIP_Real ProbData::orcaleValue(
-	const vector<SCIP_Real> & values,
-	int id,
-	SCIP_Real val
-){ 
-	auto & incident_edges = incident_list[id];
-	for(auto & p: incident_edges){
-		SCIP_Real wt = p.second;
-		val += values[p.first] ? -wt : wt;
-	}
-	//SCIPdebugMessage("%f,%f\n", result, result_);
-	return val;
-}
 
 
 

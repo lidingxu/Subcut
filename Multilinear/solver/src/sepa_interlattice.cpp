@@ -166,8 +166,6 @@ SCIP_Real computeIntersectionPoint(
 }
 
 
-
-
 /** computes the cut coefs of the  non-basic (non-slack) variables (correspond to cols) and adds them to the
  * A x + I s = 0, and A_b x_b + I_b s_b + A_n x_n + I_n s_n = 0. B = [A_b, I_b]
  * B^{-1} (Ax + Is) = 0,  x_b +  B^{-1}A_n x_n + s_b + B^{-1} I_n s_n = 0.

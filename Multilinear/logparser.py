@@ -38,6 +38,7 @@ def extract_scip(entry_, file_path):
     entry["FirstLP"] =   float("NAN")  if stat_dict["First LP value"].split()[4] == "-" else float(stat_dict["First LP value"].split()[4])
     entry["affected"] =   int(stat_dict["intersub"].split()[8]) > 0 
     entry["ncuts"] =  int(stat_dict["intersub"].split()[8])  + int(stat_dict["interlattice"].split()[8]) 
+    entry["napplied"] =  int(stat_dict["intersub"].split()[11])  + int(stat_dict["interlattice"].split()[11]) 
     entry["solving"] = float(stat_dict["solving"].split()[2])
     #entry["rel_gap"] = float(if stat_dict["Gap"].split()[2] == "infinite") #float(stat_dict["Gap"].split()[2])
     return entry
@@ -58,6 +59,7 @@ logs = os.listdir(log_path)
 
 entries = []
 
+instances = set()
 
 for log in logs:
     log_ = log
@@ -68,6 +70,7 @@ for log in logs:
     log = log.split("_")[0] +"_" + log.split("_")[1]
     instance = log.split(".")[0] +"." + log.split(".")[1]
     instance = instance[0:-5]
+    instances.add(instance)
     insclass = instance.split("-")[0][-2:]
     entry={}
     entry["instance"] = instance
@@ -89,7 +92,7 @@ for row_ind in range(len(df)):
     row = df.iloc[row_ind]
     if row["name"].find("autocorr") != -1:
         entry = {}
-        entry["instance"] = row["name"]
+        entry["instance"] =  row["name"]
         entry["opt"] = float(row["primalbound"])
         insclass = entry["instance"][-5:-3]
         entry["class"] = insclass
@@ -98,15 +101,15 @@ for row_ind in range(len(df)):
     
 
 def Stat(aname, sname, pname):
-    return {"activate": aname,"setting": sname, "pclass": pname, "solved": 0, "closed": 0, "total_time": 0.0, "total": 0, "ncuts": 0, "relative": 1., "relative_lst": [], "total_time_lst": [], "ncuts_lst": [], "closed_lst": []} 
+    return {"activate": aname,"setting": sname, "pclass": pname, "solved": 0, "closed": 0, "total_time": 0.0, "total": 0, "ncuts": 0,  "napplied": 0, "relative": 1., "relative_lst": [], "total_time_lst": [], "ncuts_lst": [], "napplied_lst": [], "closed_lst": []} 
 
-display_keys = ["activate","setting", "pclass", "closed", "relative", "total_time", "ncuts", "total"]
+display_keys = ["activate","setting", "pclass", "closed", "relative", "total_time", "ncuts", "napplied", "total"]
 
 
 details = ""
 
 
-activates = ["a", "d"]
+activates = ["d", "a"]
 settings = ["default", "icutsa", "icutsd", "icutsl"]
 pclasses = ['20', '25', '30', '35', '40', '45', '50', '55', '60']
 
@@ -139,6 +142,7 @@ def add(stat, entry):
     #stat["solved"] += entry["issolved"] 
     stat["total"] += 1
     stat["ncuts_lst"].append(entry["ncuts"])
+    stat["napplied_lst"].append(entry["napplied"])
     stat["closed_lst"].append(entry["closed"]) 
     stat["total_time_lst"].append(entry["total_time"])
     #print(entry["relative"])
@@ -153,6 +157,7 @@ def avgStat(stat):
     stat["closed"] =  SGM(stat["closed_lst"], stat["total"], 1)
     stat["total_time"] = SGM(stat["total_time_lst"], stat["total"], 1)
     stat["ncuts"] = SGM(stat["ncuts_lst"] , stat["total"], 1)
+    stat["napplied"] = SGM(stat["napplied_lst"] , stat["total"], 1)
     stat["relative"] = SGM(stat["relative_lst"] , stat["total"], 1)
 
 
@@ -163,6 +168,8 @@ def printStat(activate, setting, pclass, stat):
 
 stats = {}
 allstat = {}
+
+
 
 for activate in activates:
     for setting in settings:
@@ -179,3 +186,46 @@ for activate in activates:
         avgStat(allstat[(activate, setting)])
         #allstat[setting]["relative"] = (allstat[setting]["closed"] + 1e-9) /  (allstat["default"]["closed"] + 1e-9)       
         printStat(activate, setting, "all", allstat[(activate, setting)])
+
+pairs = (("default", "icutsa"), ("default", "icutsl"), ("icutsl","icutsa"))
+
+names = {"default": "Default", "icutsl": "Split cut", "icutsa": "Submodular cut"}
+data= {}
+for i in range(0,2):
+    for j in range(0,3):
+        data[(activates[i], pairs[j][0])] = []
+        data[(activates[i], pairs[j][1])] = []
+
+settings = ["default", "icutsa", "icutsl"]
+for instance in instances:
+    for activate in activates:
+        for setting in settings:
+            for entry in entries:
+                if entry["instance"] == instance and entry["setting"] == setting and entry["activate"] == activate:
+                    data[(activate, setting)].append(entry["closed"])
+                    break
+
+
+fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(10, 6))  # define the figure and subplots
+
+for i in range(0,2):
+    for j in range(0,3):
+        pair = pairs[j]
+        wins = [0,0]
+        num = min(len( data[(activates[i], pair[0])]),  len(data[(activates[i], pair[1])]))
+        if i == 1 and j == 0:
+            print(data[(activates[i], pair[0])], "\n", data[(activates[i], pair[1])])
+        maxd = 0
+        for k in range(num):
+            maxd = max(maxd, data[(activates[i], pair[0])][k], data[(activates[i], pair[1])][k])
+            if data[(activates[i], pair[0])][k] > data[(activates[i], pair[1])][k]:
+                wins[0] += 1
+            else:
+                wins[1] += 1
+        axes[i,j].scatter(data[(activates[i], pair[1])], data[(activates[i], pair[0])], color = 'blue', marker = '+')
+        axes[i,j].plot([0,maxd], [0, maxd], color = 'green')
+        axes[i,j].set_xlabel(names[pair[1]] +" wins " + str(wins[1]))
+        axes[i,j].set_ylabel(names[pair[0]] + " wins " +  str(wins[0]))
+
+fig.tight_layout()
+plt.savefig('scatter_mubo.pdf') 
