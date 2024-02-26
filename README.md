@@ -6,4 +6,4 @@ The cuts and experiments are described in the paper [Submodular maximization and
 The cutting planes are generated in each node of the branch-and-cut algorithm, and we use [SCIP](https://www.scipopt.org/) to implement them. Note that the codes are developed in a Linux environment and the building requires the [Armadillo](https://arma.sourceforge.net/) library. Before running the code, please build them using an appropriate environment.
 
 
-Three benchmarks correspond to three root directories. In each benchmark file, there are codes and bash files to run the experiments. 
+Three benchmark tests correspond to three root directories. In each benchmark file, there are codes and bash files to run the experiments. 
