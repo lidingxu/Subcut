@@ -1,4 +1,4 @@
-# Test codes for cutting planes for signomial programming
+# Test codes of cutting planes for submodular optimization
 
 We develop two kinds of cutting planes for signomial  programming: outer approximation cuts and intersection cuts.
 The cuts and experiments are described in the paper [Submodular maximization and its generalization through an intersection cut lens](https://arxiv.org/abs/2302.14020). 
